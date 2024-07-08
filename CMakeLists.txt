@@ -15,6 +15,7 @@ ExternalProject_Add(
         BUILD_COMMAND ""
         INSTALL_COMMAND ""
         LOG_DOWNLOAD ON
+        DOWNLOAD_EXTRACT_TIMESTAMP ON
 )
 ExternalProject_Get_Property(Boost SOURCE_DIR)
 set(BOOST_EXTRACT_DIR "${SOURCE_DIR}")
@@ -48,10 +49,10 @@ add_executable(
         src/submodules/zstd/lib/decompress/zstd_ddict.c
         src/submodules/zstd/lib/decompress/zstd_decompress_block.c
         src/submodules/zstd/lib/decompress/zstd_decompress.c
+        src/bindings.cpp
 )
 
-set_target_properties(ClpIrV1Decoder PROPERTIES COMPILE_FLAGS "-O3")
-set_target_properties(ClpIrV1Decoder PROPERTIES LINK_FLAGS    "-s EXPORTED_FUNCTIONS=['_malloc','_free'] -s MODULARIZE=1 -s EXPORT_ES6=1 -s ENVIRONMENT=worker -lembind -sALLOW_MEMORY_GROWTH=1 -sWASM_BIGINT -flto -O3 --closure 1")
+set_target_properties(ClpIrV1Decoder PROPERTIES LINK_FLAGS    "-s MODULARIZE=1 -s EXPORT_ES6=1 -s ENVIRONMENT=node -lembind -sALLOW_MEMORY_GROWTH=1 -sWASM_BIGINT -flto --closure 1")
 
 target_compile_definitions(ClpIrV1Decoder PUBLIC SPDLOG_FMT_EXTERNAL=1)
 
@@ -59,6 +60,8 @@ target_include_directories(
         ClpIrV1Decoder
         PRIVATE
         ${BOOST_EXTRACT_DIR}
+        src/
+        src/submodules/clp/components/core/src
         src/submodules/clp/components/core/src/clp
         src/submodules/clp/components/core/submodules
         src/submodules/fmt/include
