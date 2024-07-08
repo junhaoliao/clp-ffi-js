@@ -12,32 +12,60 @@
 
 static constexpr size_t cDefaultInitialNumLogEvents = 500'000;
 static constexpr size_t cFullRangeEndIdx = 0;
+static constexpr size_t cLogLevelNone = 0;
 
 auto ClpIrV1Decoder::create(emscripten::val const& data_array) -> ClpIrV1Decoder* {
     auto length = data_array["length"].as<size_t>();
     SPDLOG_INFO("ClpIrV1Decoder::ClpIrV1Decoder() got buffer of length={}", length);
 
-    // TODO: This shall not be freed until all indices have been built.
-    auto* data_buffer = static_cast<char const*>(std::malloc(length));
+    auto data_buffer = std::vector<char const>(length);
     emscripten::val::module_property("HEAPU8")
-            .call<void>("set", data_array, reinterpret_cast<uintptr_t>(data_buffer));
-    return new ClpIrV1Decoder(data_buffer, length);
+            .call<void>("set", data_array, reinterpret_cast<uintptr_t>(data_buffer.data()));
+
+    auto zstd_decompressor = std::make_shared<clp::streaming_compression::zstd::Decompressor>();
+    zstd_decompressor->open(data_buffer.data(), length);
+
+    bool is_four_bytes_encoding{true};
+    if (auto const err{
+                clp::ffi::ir_stream::get_encoding_type(*zstd_decompressor, is_four_bytes_encoding)
+        };
+        clp::ffi::ir_stream::IRErrorCode::IRErrorCode_Success != err)
+    {
+        SPDLOG_CRITICAL("Failed to decode encoding type.");
+        throw err;
+    }
+    if (false == is_four_bytes_encoding) {
+        SPDLOG_CRITICAL("Is not four byte encoding.");
+        throw std::exception();
+    }
+    auto result{clp::ir::LogEventDeserializer<clp::ir::four_byte_encoded_variable_t>::create(
+            *zstd_decompressor
+    )};
+    if (result.has_error()) {
+        auto const error_code{result.error()};
+        SPDLOG_CRITICAL(
+                "Failed to decompress: {}:{}",
+                error_code.category().name(),
+                error_code.message()
+        );
+        throw std::exception();
+    }
+
+    return new ClpIrV1Decoder(std::move(data_buffer), zstd_decompressor, std::move(result.value()));
 }
 
-// ClpIrV1Decoder::ClpIrV1Decoder(char const* data_buffer, size_t length)
-//         : m_zstd_decompressor(),
-//           m_deserializer{std::make_unique<
-//                   clp::ir::LogEventDeserializer<clp::ir::four_byte_encoded_variable_t>>(
-//                   decode_preamble(data_buffer, length)
-//           )} {}
-
-ClpIrV1Decoder::ClpIrV1Decoder(char const* data_buffer, size_t length) : m_zstd_decompressor() {
-    m_deserializer = std::make_unique<
-            clp::ir::LogEventDeserializer<clp::ir::four_byte_encoded_variable_t>>(
-            decode_preamble(data_buffer, length)
-    );
-    m_ts_pattern = m_deserializer->get_timestamp_pattern();
+ClpIrV1Decoder::ClpIrV1Decoder(
+        std::vector<char const> data_buffer,
+        std::shared_ptr<clp::streaming_compression::zstd::Decompressor> zstd_decompressor,
+        clp::ir::LogEventDeserializer<clp::ir::four_byte_encoded_variable_t> deserializer
+)
+        : m_data_buffer{std::move(data_buffer)},
+          m_zstd_decompressor{zstd_decompressor},
+          m_deserializer{std::move(deserializer)} {
+    m_ts_pattern = m_deserializer.get_timestamp_pattern();
 }
+
+ClpIrV1Decoder::~ClpIrV1Decoder() {}
 
 size_t ClpIrV1Decoder::get_estimated_num_events() {
     return m_log_events.size();
@@ -50,25 +78,26 @@ emscripten::val ClpIrV1Decoder::build_idx(size_t begin_idx, size_t end_idx) {
         results.set("numValidEvents", 0);
         results.set("numInvalidEvents", end_idx - begin_idx);
         return results;
-    }
-
-    m_log_events.reserve(cDefaultInitialNumLogEvents);
-    while (true) {
-        auto const result{m_deserializer->deserialize_log_event()};
-        if (result.has_error()) {
-            auto const error{result.error()};
-            if (std::errc::result_out_of_range == error) {
-                SPDLOG_ERROR("File contains an incomplete IR stream");
-            } else if (std::errc::no_message_available != error) {
-                SPDLOG_ERROR(
-                        "Failed to decompress: {}:{}",
-                        error.category().name(),
-                        error.message()
-                );
+    } else if (m_log_events.empty()) {
+        m_log_events.reserve(cDefaultInitialNumLogEvents);
+        while (true) {
+            auto const result{m_deserializer.deserialize_log_event()};
+            if (result.has_error()) {
+                auto const error{result.error()};
+                if (std::errc::result_out_of_range == error) {
+                    SPDLOG_ERROR("File contains an incomplete IR stream");
+                } else if (std::errc::no_message_available != error) {
+                    SPDLOG_ERROR(
+                            "Failed to decompress: {}:{}",
+                            error.category().name(),
+                            error.message()
+                    );
+                }
+                break;
             }
-            break;
+            m_log_events.emplace_back(result.value());
         }
-        m_log_events.emplace_back(result.value());
+        m_data_buffer.clear();
     }
 
     results.set("numValidEvents", m_log_events.size());
@@ -118,7 +147,7 @@ emscripten::val ClpIrV1Decoder::decode(size_t begin_idx, size_t end_idx) {
             break;
         }
 
-        size_t log_level = 0;
+        size_t log_level = cLogLevelNone;
         for (auto const& log_level_name : cLogLevelNames) {
             if (message.substr(1).starts_with(log_level_name)) {
                 log_level = &log_level_name - cLogLevelNames.data();
@@ -139,36 +168,4 @@ emscripten::val ClpIrV1Decoder::decode(size_t begin_idx, size_t end_idx) {
     }
 
     return results;
-}
-
-auto ClpIrV1Decoder::decode_preamble(char const* data_buffer, size_t length)
-        -> clp::ir::LogEventDeserializer<clp::ir::four_byte_encoded_variable_t> {
-    bool is_four_bytes_encoding{true};
-    m_zstd_decompressor.open(data_buffer, length);
-    if (auto const err{
-                clp::ffi::ir_stream::get_encoding_type(m_zstd_decompressor, is_four_bytes_encoding)
-        };
-        clp::ffi::ir_stream::IRErrorCode::IRErrorCode_Success != err)
-    {
-        SPDLOG_CRITICAL("Failed to decode encoding type.");
-        throw err;
-    }
-    if (false == is_four_bytes_encoding) {
-        SPDLOG_CRITICAL("Is not four byte encoding.");
-        throw std::exception();
-    }
-    auto result{clp::ir::LogEventDeserializer<clp::ir::four_byte_encoded_variable_t>::create(
-            m_zstd_decompressor
-    )};
-    if (result.has_error()) {
-        auto const error_code{result.error()};
-        SPDLOG_CRITICAL(
-                "Failed to decompress: {}:{}",
-                error_code.category().name(),
-                error_code.message()
-        );
-        throw std::exception();
-    }
-
-    return std::move(result.value());
 }
