@@ -1,4 +1,4 @@
-#include "StreamReader.hpp"
+#include "IRStreamReader.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -34,9 +34,9 @@ using namespace std::literals::string_literals;
 using clp::ir::four_byte_encoded_variable_t;
 
 namespace clp_ffi_js::ir {
-auto StreamReader::create(DataArrayTsType const& data_array) -> StreamReader {
+auto IRStreamReader::create(DataArrayTsType const& data_array) -> IRStreamReader {
     auto const length{data_array["length"].as<size_t>()};
-    SPDLOG_INFO("StreamReader::create: got buffer of length={}", length);
+    SPDLOG_INFO("IRStreamReader::create: got buffer of length={}", length);
 
     // Copy array from JavaScript to C++
     clp::Array<char> data_buffer{length};
@@ -94,14 +94,14 @@ auto StreamReader::create(DataArrayTsType const& data_array) -> StreamReader {
             std::move(zstd_decompressor),
             std::move(result.value())
     };
-    return StreamReader{std::move(stream_reader_data_context)};
+    return IRStreamReader{std::move(stream_reader_data_context)};
 }
 
-auto StreamReader::get_num_events_buffered() const -> size_t {
+auto IRStreamReader::get_num_events_buffered() const -> size_t {
     return m_encoded_log_events.size();
 }
 
-auto StreamReader::get_filtered_log_event_map() const -> FilteredLogEventMapTsType {
+auto IRStreamReader::get_filtered_log_event_map() const -> FilteredLogEventMapTsType {
     if (false == m_filtered_log_event_map.has_value()) {
         return FilteredLogEventMapTsType{emscripten::val::null()};
     }
@@ -109,7 +109,7 @@ auto StreamReader::get_filtered_log_event_map() const -> FilteredLogEventMapTsTy
     return FilteredLogEventMapTsType{emscripten::val::array(m_filtered_log_event_map.value())};
 }
 
-void StreamReader::filter_log_events(emscripten::val const& log_level_filter) {
+void IRStreamReader::filter_log_events(emscripten::val const& log_level_filter) {
     if (log_level_filter.isNull()) {
         m_filtered_log_event_map.reset();
         return;
@@ -131,7 +131,7 @@ void StreamReader::filter_log_events(emscripten::val const& log_level_filter) {
     }
 }
 
-auto StreamReader::deserialize_stream() -> size_t {
+auto IRStreamReader::deserialize_stream() -> size_t {
     if (nullptr == m_stream_reader_data_context) {
         return m_encoded_log_events.size();
     }
@@ -191,7 +191,7 @@ auto StreamReader::deserialize_stream() -> size_t {
     return m_encoded_log_events.size();
 }
 
-auto StreamReader::decode_range(size_t begin_idx, size_t end_idx, bool use_filter) const
+auto IRStreamReader::decode_range(size_t begin_idx, size_t end_idx, bool use_filter) const
         -> DecodedResultsTsType {
     if (use_filter && false == m_filtered_log_event_map.has_value()) {
         return DecodedResultsTsType{emscripten::val::null()};
@@ -243,7 +243,7 @@ auto StreamReader::decode_range(size_t begin_idx, size_t end_idx, bool use_filte
     return DecodedResultsTsType(results);
 }
 
-StreamReader::StreamReader(
+IRStreamReader::IRStreamReader(
         StreamReaderDataContext<four_byte_encoded_variable_t>&& stream_reader_data_context
 )
         : m_stream_reader_data_context{std::make_unique<
@@ -261,21 +261,21 @@ EMSCRIPTEN_BINDINGS(ClpIrStreamReader) {
     );
     emscripten::register_type<clp_ffi_js::ir::FilteredLogEventMapTsType>("number[] | null");
 
-    emscripten::class_<clp_ffi_js::ir::StreamReader>("ClpIrStreamReader")
+    emscripten::class_<clp_ffi_js::ir::IRStreamReader>("ClpIRStreamReader")
             .constructor(
-                    &clp_ffi_js::ir::StreamReader::create,
+                    &clp_ffi_js::ir::IRStreamReader::create,
                     emscripten::return_value_policy::take_ownership()
             )
             .function(
                     "getNumEventsBuffered",
-                    &clp_ffi_js::ir::StreamReader::get_num_events_buffered
+                    &clp_ffi_js::ir::IRStreamReader::get_num_events_buffered
             )
             .function(
                     "getFilteredLogEventMap",
-                    &clp_ffi_js::ir::StreamReader::get_filtered_log_event_map
+                    &clp_ffi_js::ir::IRStreamReader::get_filtered_log_event_map
             )
-            .function("filterLogEvents", &clp_ffi_js::ir::StreamReader::filter_log_events)
-            .function("deserializeStream", &clp_ffi_js::ir::StreamReader::deserialize_stream)
-            .function("decodeRange", &clp_ffi_js::ir::StreamReader::decode_range);
+            .function("filterLogEvents", &clp_ffi_js::ir::IRStreamReader::filter_log_events)
+            .function("deserializeStream", &clp_ffi_js::ir::IRStreamReader::deserialize_stream)
+            .function("decodeRange", &clp_ffi_js::ir::IRStreamReader::decode_range);
 }
 }  // namespace

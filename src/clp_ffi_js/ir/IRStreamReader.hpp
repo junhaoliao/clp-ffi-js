@@ -1,5 +1,5 @@
-#ifndef CLP_FFI_JS_IR_STREAM_READER_HPP
-#define CLP_FFI_JS_IR_STREAM_READER_HPP
+#ifndef CLP_FFI_JS_IR_IR_STREAM_READER_HPP
+#define CLP_FFI_JS_IR_IR_STREAM_READER_HPP
 
 #include <cstddef>
 #include <memory>
@@ -23,7 +23,7 @@ EMSCRIPTEN_DECLARE_VAL_TYPE(FilteredLogEventMapTsType);
  * Class to deserialize and decode Zstandard-compressed CLP IR streams as well as format decoded
  * log events.
  */
-class StreamReader {
+class IRStreamReader {
 public:
     /**
      * Mapping between an index in the filtered log events collection to an index in the unfiltered
@@ -38,19 +38,19 @@ public:
      * @return The created instance.
      * @throw ClpFfiJsException if any error occurs.
      */
-    [[nodiscard]] static auto create(DataArrayTsType const& data_array) -> StreamReader;
+    [[nodiscard]] static auto create(DataArrayTsType const& data_array) -> IRStreamReader;
 
     // Destructor
-    ~StreamReader() = default;
+    ~IRStreamReader() = default;
 
     // Disable copy constructor and assignment operator
-    StreamReader(StreamReader const&) = delete;
-    auto operator=(StreamReader const&) -> StreamReader& = delete;
+    IRStreamReader(IRStreamReader const&) = delete;
+    auto operator=(IRStreamReader const&) -> IRStreamReader& = delete;
 
     // Define default move constructor
-    StreamReader(StreamReader&&) = default;
+    IRStreamReader(IRStreamReader&&) = default;
     // Delete move assignment operator since it's also disabled in `clp::ir::LogEventDeserializer`.
-    auto operator=(StreamReader&&) -> StreamReader& = delete;
+    auto operator=(IRStreamReader&&) -> IRStreamReader& = delete;
 
     /**
      * @return The number of events buffered.
@@ -97,7 +97,7 @@ public:
 
 private:
     // Constructor
-    explicit StreamReader(StreamReaderDataContext<clp::ir::four_byte_encoded_variable_t>&&
+    explicit IRStreamReader(StreamReaderDataContext<clp::ir::four_byte_encoded_variable_t>&&
                                   stream_reader_data_context);
 
     // Variables
@@ -109,4 +109,4 @@ private:
 };
 }  // namespace clp_ffi_js::ir
 
-#endif  // CLP_FFI_JS_IR_STREAM_READER_HPP
+#endif  // CLP_FFI_JS_IR_IR_STREAM_READER_HPP
