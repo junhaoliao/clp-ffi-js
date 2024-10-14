@@ -12,18 +12,15 @@
 #include <emscripten/val.h>
 
 #include <clp_ffi_js/ir/LogEventWithLevel.hpp>
+#include <clp_ffi_js/ir/StreamReader.hpp>
 #include <clp_ffi_js/ir/StreamReaderDataContext.hpp>
 
 namespace clp_ffi_js::ir {
-EMSCRIPTEN_DECLARE_VAL_TYPE(DataArrayTsType);
-EMSCRIPTEN_DECLARE_VAL_TYPE(DecodedResultsTsType);
-EMSCRIPTEN_DECLARE_VAL_TYPE(FilteredLogEventMapTsType);
-
 /**
- * Class to deserialize and decode Zstandard-compressed CLP IR streams as well as format decoded
- * log events.
+ * Class to deserialize and decode Zstandard-compressed CLP Text IR streams as well as format
+ * decoded log events.
  */
-class IRStreamReader {
+class IRStreamReader : public StreamReader {
 public:
     /**
      * Mapping between an index in the filtered log events collection to an index in the unfiltered
@@ -32,16 +29,16 @@ public:
     using FilteredLogEventsMap = std::optional<std::vector<size_t>>;
 
     /**
-     * Creates a StreamReader to read from the given array.
+     * Creates a IRStreamReader to read from the given array.
      *
-     * @param data_array An array containing a Zstandard-compressed IR stream.
+     * @param data_array An array containing a Zstandard-compressed CLP Text IR stream.
      * @return The created instance.
      * @throw ClpFfiJsException if any error occurs.
      */
     [[nodiscard]] static auto create(DataArrayTsType const& data_array) -> IRStreamReader;
 
     // Destructor
-    ~IRStreamReader() = default;
+    ~IRStreamReader() override = default;
 
     // Disable copy constructor and assignment operator
     IRStreamReader(IRStreamReader const&) = delete;
@@ -55,19 +52,19 @@ public:
     /**
      * @return The number of events buffered.
      */
-    [[nodiscard]] auto get_num_events_buffered() const -> size_t;
+    [[nodiscard]] auto get_num_events_buffered() const -> size_t override;
 
     /**
      * @return The filtered log events map.
      */
-    [[nodiscard]] auto get_filtered_log_event_map() const -> FilteredLogEventMapTsType;
+    [[nodiscard]] auto get_filtered_log_event_map() const -> FilteredLogEventMapTsType override;
 
     /**
      * Generates a filtered collection from all log events.
      *
      * @param log_level_filter Array of selected log levels
      */
-    void filter_log_events(emscripten::val const& log_level_filter);
+    void filter_log_events(emscripten::val const& log_level_filter) override;
 
     /**
      * Deserializes all log events in the stream. After the stream has been exhausted, it will be
@@ -75,7 +72,7 @@ public:
      *
      * @return The number of successfully deserialized ("valid") log events.
      */
-    [[nodiscard]] auto deserialize_stream() -> size_t;
+    [[nodiscard]] auto deserialize_stream() -> size_t override;
 
     /**
      * Decodes log events in the range `[beginIdx, endIdx)` of the filtered or unfiltered
@@ -92,13 +89,13 @@ public:
      * @return null if any log event in the range doesn't exist (e.g. the range exceeds the number
      * of log events in the collection).
      */
-    [[nodiscard]] auto
-    decode_range(size_t begin_idx, size_t end_idx, bool use_filter) const -> DecodedResultsTsType;
+    [[nodiscard]] auto decode_range(size_t begin_idx, size_t end_idx, bool use_filter) const
+            -> DecodedResultsTsType override;
 
 private:
     // Constructor
     explicit IRStreamReader(StreamReaderDataContext<clp::ir::four_byte_encoded_variable_t>&&
-                                  stream_reader_data_context);
+                                    stream_reader_data_context);
 
     // Variables
     std::vector<LogEventWithLevel<clp::ir::four_byte_encoded_variable_t>> m_encoded_log_events;
