@@ -1,9 +1,11 @@
 #ifndef CLP_FFI_JS_IR_IR_STREAM_READER_HPP
 #define CLP_FFI_JS_IR_IR_STREAM_READER_HPP
 
+#include <Array.hpp>
 #include <cstddef>
 #include <memory>
 #include <optional>
+#include <streaming_compression/zstd/Decompressor.hpp>
 #include <vector>
 
 #include <clp/ir/types.hpp>
@@ -92,9 +94,17 @@ public:
             -> DecodedResultsTsType override;
 
 private:
+    friend class StreamReader;
+
     // Constructor
     explicit IRStreamReader(StreamReaderDataContext<clp::ir::four_byte_encoded_variable_t>&&
                                     stream_reader_data_context);
+
+    // Methods
+    [[nodiscard]] static auto create_deserializer_and_data_context(
+            std::unique_ptr<clp::streaming_compression::zstd::Decompressor>&& zstd_decompressor,
+            clp::Array<char>&& data_buffer
+    ) -> StreamReaderDataContext<clp::ir::four_byte_encoded_variable_t>;
 
     // Variables
     std::vector<LogEventWithLevel<clp::ir::four_byte_encoded_variable_t>> m_encoded_log_events;
