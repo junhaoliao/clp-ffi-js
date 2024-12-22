@@ -26,24 +26,25 @@ jobs:
         with:
           path: "dist/"
 
-  publish-npm:
-    needs: ["build"]
-    runs-on: "ubuntu-latest"
-    steps:
-      - uses: "actions/checkout@v4"
-      - uses: "actions/download-artifact@v4"
+  # publish-npm:
+  #   needs: ["build"]
+  #   runs-on: "ubuntu-latest"
+  #   steps:
+  #     - uses: "actions/checkout@v4"
+  #     - uses: "actions/download-artifact@v4"
 
-      - uses: "actions/setup-node@v4"
-        with:
-          node-version: 22
-          registry-url: "https://registry.npmjs.org/"
+  #     - uses: "actions/setup-node@v4"
+  #       with:
+  #         node-version: 22
+  #         registry-url: "https://registry.npmjs.org/"
 
-      - run: "npm publish"
-        env:
-          NODE_AUTH_TOKEN: "${{secrets.NPM_TOKEN}}"
+  #     - run: "npm publish"
+  #       env:
+  #         NODE_AUTH_TOKEN: "${{secrets.NPM_TOKEN}}"
 
   create-branch:
-    needs: ["publish-npm"]
+    # disabled for test purpose
+    # needs: ["publish-npm"]
     runs-on: "ubuntu-latest"
     steps:
       - uses: "actions/checkout@v4"
