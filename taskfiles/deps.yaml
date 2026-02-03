@@ -18,7 +18,7 @@ tasks:
     deps:
       - "download-antlr-runtime"
       - "download-boost"
-      - "download-clp"
+
       - "download-date"
       - "download-fmt"
       - "download-nlohmann-json"
@@ -66,22 +66,6 @@ tasks:
         CLP_FFI_JS_BOOST_SOURCE_DIRECTORY \"{{.BOOST_OUTPUT_DIR}}\"
         )" > "{{.G_DEPS_CMAKE_SETTINGS_DIR}}/{{.LIB_NAME}}.cmake"
 
-  download-clp:
-    internal: true
-    vars:
-      LIB_NAME: "clp"
-      CLP_OUTPUT_DIR: "{{.G_DEPS_DIR}}/{{.LIB_NAME}}"
-    run: "once"
-    cmds:
-      - task: ":utils:remote:download-and-extract-tar"
-        vars:
-          FILE_SHA256: "1a70dc757d8e3bc323808cc4b8bc9e060ac3c6add183ed8aef49d918cedc49ff"
-          OUTPUT_DIR: "{{.CLP_OUTPUT_DIR}}"
-          URL: "https://github.com/y-scope/clp/archive/de9fc08.tar.gz"
-      - >-
-        echo "set(
-        CLP_FFI_JS_CLP_SOURCE_DIRECTORY \"{{.CLP_OUTPUT_DIR}}\"
-        )" > "{{.G_DEPS_CMAKE_SETTINGS_DIR}}/{{.LIB_NAME}}.cmake"
 
   download-date:
     internal: true

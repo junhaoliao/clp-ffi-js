@@ -47,6 +47,9 @@ if(${CLP_FFI_JS_PROJECT_NAME}_IS_TOP_LEVEL)
     include("build/deps/cmake-settings/settings.cmake" OPTIONAL)
 endif()
 
+# CLP is included as a git submodule under src/clp
+set(CLP_FFI_JS_CLP_SOURCE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/src/clp")
+
 # Disable response files since `clang-tidy` doesn't seem to be able to use them
 set(CMAKE_CXX_USE_RESPONSE_FILE_FOR_INCLUDES OFF)
 
