@@ -107,6 +107,8 @@ set(CLP_FFI_JS_SRC_MAIN
     src/clp_ffi_js/ir/StructuredIrStreamReader.cpp
     src/clp_ffi_js/ir/StructuredIrUnitHandler.cpp
     src/clp_ffi_js/ir/UnstructuredIrStreamReader.cpp
+    src/clp_ffi_js/sfa/ArchiveDecoder.cpp
+    src/clp_ffi_js/sfa/SfaBindings.cpp
     src/clp_ffi_js/utils.cpp
 )
 
@@ -167,31 +169,142 @@ set(ANTLR_BUILD_SHARED OFF)
 set(ANTLR_BUILD_STATIC ON)
 add_subdirectory(${CLP_FFI_JS_ANTLR_RUNTIME_SOURCE_DIRECTORY})
 
+# Set up abseil-cpp
+set(ABSL_PROPAGATE_CXX_STD ON)
+set(ABSL_BUILD_TESTING OFF)
+set(BUILD_TESTING OFF)
+add_subdirectory(${CLP_FFI_JS_ABSEIL_CPP_SOURCE_DIRECTORY} abseil-cpp)
+
 add_subdirectory(${CLP_FFI_JS_DATE_SOURCE_DIRECTORY})
 set(FMT_INSTALL OFF)
 add_subdirectory(${CLP_FFI_JS_FMT_SOURCE_DIRECTORY} fmt)
+
+# Set up log-surgeon
+# log-surgeon uses find_package() for fmt, Microsoft.GSL, and ystdlib. Since we build these from
+# source via add_subdirectory, we provide minimal config files so find_package can locate them.
+set(CLP_FFI_JS_CMAKE_SHIMS_DIR "${CMAKE_CURRENT_BINARY_DIR}/cmake-shims")
+file(MAKE_DIRECTORY "${CLP_FFI_JS_CMAKE_SHIMS_DIR}/fmt")
+file(WRITE "${CLP_FFI_JS_CMAKE_SHIMS_DIR}/fmt/fmtConfig.cmake"
+    "# Shim: fmt target already created by add_subdirectory\n"
+    "set(fmt_VERSION 11.2.0)\n"
+    "set(fmt_FOUND TRUE)\n"
+)
+file(WRITE "${CLP_FFI_JS_CMAKE_SHIMS_DIR}/fmt/fmtConfigVersion.cmake"
+    "set(PACKAGE_VERSION \"11.2.0\")\n"
+    "set(PACKAGE_VERSION_COMPATIBLE TRUE)\n"
+    "set(PACKAGE_VERSION_EXACT TRUE)\n"
+)
+# Set up Microsoft GSL (Guidelines Support Library) - required by log-surgeon
+set(GSL_TEST OFF CACHE BOOL "" FORCE)
+add_subdirectory(${CLP_FFI_JS_GSL_SOURCE_DIRECTORY} gsl EXCLUDE_FROM_ALL)
+file(MAKE_DIRECTORY "${CLP_FFI_JS_CMAKE_SHIMS_DIR}/Microsoft.GSL")
+file(WRITE "${CLP_FFI_JS_CMAKE_SHIMS_DIR}/Microsoft.GSL/Microsoft.GSLConfig.cmake"
+    "# Shim: Microsoft.GSL::GSL target already created by add_subdirectory\n"
+    "set(Microsoft.GSL_VERSION 4.0.0)\n"
+    "set(Microsoft.GSL_FOUND TRUE)\n"
+)
+file(WRITE "${CLP_FFI_JS_CMAKE_SHIMS_DIR}/Microsoft.GSL/Microsoft.GSLConfigVersion.cmake"
+    "set(PACKAGE_VERSION \"4.0.0\")\n"
+    "set(PACKAGE_VERSION_COMPATIBLE TRUE)\n"
+    "set(PACKAGE_VERSION_EXACT TRUE)\n"
+)
+file(MAKE_DIRECTORY "${CLP_FFI_JS_CMAKE_SHIMS_DIR}/ystdlib")
+file(WRITE "${CLP_FFI_JS_CMAKE_SHIMS_DIR}/ystdlib/ystdlibConfig.cmake"
+    "# Shim: ystdlib targets already created by add_subdirectory\n"
+    "set(ystdlib_VERSION 0.1.0)\n"
+    "set(ystdlib_FOUND TRUE)\n"
+)
+file(WRITE "${CLP_FFI_JS_CMAKE_SHIMS_DIR}/ystdlib/ystdlibConfigVersion.cmake"
+    "set(PACKAGE_VERSION \"0.1.0\")\n"
+    "set(PACKAGE_VERSION_COMPATIBLE TRUE)\n"
+    "set(PACKAGE_VERSION_EXACT TRUE)\n"
+)
+set(fmt_DIR "${CLP_FFI_JS_CMAKE_SHIMS_DIR}/fmt")
+set(Microsoft.GSL_DIR "${CLP_FFI_JS_CMAKE_SHIMS_DIR}/Microsoft.GSL")
+set(ystdlib_DIR "${CLP_FFI_JS_CMAKE_SHIMS_DIR}/ystdlib")
+
+set(log_surgeon_BUILD_TESTING OFF)
+# Temporarily skip install rules to avoid export validation errors for log-surgeon's dependencies.
+set(CMAKE_SKIP_INSTALL_RULES_SAVED "${CMAKE_SKIP_INSTALL_RULES}")
+set(CMAKE_SKIP_INSTALL_RULES ON)
+add_subdirectory(${CLP_FFI_JS_LOG_SURGEON_SOURCE_DIRECTORY} log-surgeon)
+set(CMAKE_SKIP_INSTALL_RULES "${CMAKE_SKIP_INSTALL_RULES_SAVED}")
+# log-surgeon enables -Werror which triggers issues with ystdlib/emscripten. Disable for our build.
+if(TARGET log_surgeon)
+    target_compile_options(log_surgeon PRIVATE -Wno-error)
+endif()
+
+# Set up msgpack-cxx (header-only with CMake)
+set(MSGPACK_USE_BOOST OFF CACHE BOOL "" FORCE)
+set(MSGPACK_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+set(MSGPACK_CXX20 ON CACHE BOOL "" FORCE)
+set(MSGPACK_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(MSGPACK_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+add_subdirectory(${CLP_FFI_JS_MSGPACK_CXX_SOURCE_DIRECTORY} msgpack-cxx)
+
+# Set up nlohmann_json (header-only with CMake). Required by clp_s targets.
+set(JSON_BuildTests OFF CACHE INTERNAL "")
+set(JSON_Install OFF CACHE INTERNAL "")
+add_subdirectory(${CLP_FFI_JS_NLOHMANN_JSON_SOURCE_DIRECTORY} nlohmann_json)
+
 add_subdirectory(${CLP_FFI_JS_SIMDJSON_SOURCE_DIRECTORY})
 add_subdirectory(${CLP_FFI_JS_SPDLOG_SOURCE_DIRECTORY})
 
-# The `clp_s` component is linked because the IR search feature uses the same KQL syntax as `clp_s`,
-# by reusing `clp_s`'s AST and KQL libraries.
-#
-# However, 'clp-ffi-js' doesn't currently require other 'clp_s' build targets (e.g., executables,
-# archive readers, etc.). Disabling them prevents an increase in the binary size and reduces the
-# number of dependencies needed during the build process.
+# The `clp_s` component provides the KQL AST/parser (used by both IR search and SFA search), the
+# archive reader/search (used by SFA), and the timestamp parser.
 set(CLP_BUILD_EXECUTABLES OFF)
-set(CLP_BUILD_CLP_S_ARCHIVEREADER OFF)
+set(CLP_BUILD_CLP_S_ARCHIVEREADER ON)
 set(CLP_BUILD_CLP_S_ARCHIVEWRITER OFF)
-set(CLP_BUILD_CLP_S_CLP_DEPENDENCIES OFF)
-set(CLP_BUILD_CLP_S_IO OFF)
+set(CLP_BUILD_CLP_S_CLP_DEPENDENCIES ON)
+set(CLP_BUILD_CLP_S_IO ON)
 set(CLP_BUILD_CLP_S_JSONCONSTRUCTOR OFF)
 set(CLP_BUILD_CLP_S_REDUCER_DEPENDENCIES OFF)
-set(CLP_BUILD_CLP_S_SEARCH OFF)
+set(CLP_BUILD_CLP_S_SEARCH ON)
 set(CLP_BUILD_CLP_S_SEARCH_AST ON)
 set(CLP_BUILD_CLP_S_SEARCH_KQL ON)
 set(CLP_BUILD_CLP_S_TIMESTAMP_PARSER ON)
 set(CLP_BUILD_CLP_S_TIMESTAMPPATTERN ON)
+
+# Provide stub targets for libraries that are not available in the Emscripten environment.
+# The clp_s CLP dependencies list curl and OpenSSL, but we only use the filesystem code path.
+if(NOT TARGET OpenSSL::Crypto)
+    add_library(OpenSSL_Crypto INTERFACE)
+    add_library(OpenSSL::Crypto ALIAS OpenSSL_Crypto)
+endif()
+
+# Provide an empty Boost::regex target (clp_s::clp_dependencies links it but we don't use regex)
+if(NOT TARGET Boost::regex)
+    add_library(Boost_regex INTERFACE)
+    target_include_directories(Boost_regex INTERFACE ${CLP_FFI_JS_BOOST_SOURCE_DIRECTORY})
+    add_library(Boost::regex ALIAS Boost_regex)
+endif()
+
+# Provide Boost::url target (needed by clp_s Utils.cpp for URI parsing).
+# Boost.URL is not header-only; it requires compiling source files.
+if(NOT TARGET Boost::url)
+    file(GLOB_RECURSE CLP_FFI_JS_BOOST_URL_SOURCES "${CLP_FFI_JS_BOOST_SOURCE_DIRECTORY}/libs/url/src/*.cpp")
+    add_library(Boost_url STATIC ${CLP_FFI_JS_BOOST_URL_SOURCES})
+    target_include_directories(Boost_url PUBLIC ${CLP_FFI_JS_BOOST_SOURCE_DIRECTORY})
+    target_compile_features(Boost_url PRIVATE cxx_std_20)
+    add_library(Boost::url ALIAS Boost_url)
+endif()
+
+# Set the zstd target variable expected by clp_s
+set(zstd_TARGET "")
+
+# Set empty CURL_LIBRARIES since we stub out network functionality
+set(CURL_LIBRARIES "")
+
 add_subdirectory(${CLP_FFI_JS_CLP_SOURCE_DIRECTORY}/components/core/src/clp_s)
+
+# Provide zstd include directory for clp_s targets. We compile zstd from source (included in
+# CLP_FFI_JS_SRC_ZSTD), but clp_s targets need the headers.
+if(TARGET clp_s_clp_dependencies)
+    target_include_directories(clp_s_clp_dependencies SYSTEM PUBLIC ${CLP_FFI_JS_ZSTD_SOURCE_DIRECTORY}/lib)
+endif()
+if(TARGET clp_s_io)
+    target_include_directories(clp_s_io SYSTEM PRIVATE ${CLP_FFI_JS_ZSTD_SOURCE_DIRECTORY}/lib)
+endif()
 
 foreach(env ${CLP_FFI_JS_SUPPORTED_ENVIRONMENTS})
     set(CLP_FFI_JS_BIN_NAME "ClpFfiJs-${env}")
@@ -205,6 +318,8 @@ foreach(env ${CLP_FFI_JS_SUPPORTED_ENVIRONMENTS})
     # Set up link options
     target_link_libraries(${CLP_FFI_JS_BIN_NAME}
         PRIVATE
+        clp_s::archive_reader
+        clp_s::search
         clp_s::search::ast
         clp_s::search::kql
         embind
@@ -238,6 +353,7 @@ Link options: ${CLP_FFI_JS_LINK_OPTIONS}."
         ${CLP_FFI_JS_BOOST_SOURCE_DIRECTORY}
         ${CLP_FFI_JS_CLP_SOURCE_DIRECTORY}/components/core/src
         ${CLP_FFI_JS_CLP_SOURCE_DIRECTORY}/components/core/src/clp
+        ${CLP_FFI_JS_MSGPACK_CXX_SOURCE_DIRECTORY}/include
         ${CLP_FFI_JS_NLOHMANN_JSON_SOURCE_DIRECTORY}/include
         ${CLP_FFI_JS_YSTDLIB_SOURCE_DIRECTORY}/src
         ${CLP_FFI_JS_ZSTD_SOURCE_DIRECTORY}/lib

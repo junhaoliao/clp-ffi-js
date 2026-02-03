@@ -31,6 +31,7 @@
         "strict": true
     },
     "include": [
+        "src/clp_ffi_js/sfa/**/*.ts",
         "test/**/*.ts",
         "vitest.config.ts",
     ]

@@ -16,16 +16,37 @@ tasks:
   download-all:
     internal: true
     deps:
+      - "download-abseil-cpp"
       - "download-antlr-runtime"
       - "download-boost"
 
       - "download-date"
+      - "download-gsl"
       - "download-fmt"
+      - "download-log-surgeon"
+      - "download-msgpack-cxx"
       - "download-nlohmann-json"
       - "download-simdjson"
       - "download-spdlog"
       - "download-ystdlib"
       - "download-zstd"
+
+  download-abseil-cpp:
+    internal: true
+    vars:
+      LIB_NAME: "abseil-cpp"
+      ABSEIL_CPP_OUTPUT_DIR: "{{.G_DEPS_DIR}}/{{.LIB_NAME}}-src"
+    run: "once"
+    cmds:
+      - task: ":utils:remote:download-and-extract-tar"
+        vars:
+          FILE_SHA256: "7262daa7c1711406248c10f41026d685e88223bc92817d16fb93c19adb57f669"
+          OUTPUT_DIR: "{{.ABSEIL_CPP_OUTPUT_DIR}}"
+          URL: "https://github.com/abseil/abseil-cpp/releases/download/20250512.0/abseil-cpp-20250512.0.tar.gz"
+      - >-
+        echo "set(
+        CLP_FFI_JS_ABSEIL_CPP_SOURCE_DIRECTORY \"{{.ABSEIL_CPP_OUTPUT_DIR}}\"
+        )" > "{{.G_DEPS_CMAKE_SETTINGS_DIR}}/{{.LIB_NAME}}.cmake"
 
   download-antlr-runtime:
     internal: true
@@ -99,6 +120,57 @@ tasks:
       - >-
         echo "set(
         CLP_FFI_JS_FMT_SOURCE_DIRECTORY \"{{.FMT_OUTPUT_DIR}}\"
+        )" > "{{.G_DEPS_CMAKE_SETTINGS_DIR}}/{{.LIB_NAME}}.cmake"
+
+  download-gsl:
+    internal: true
+    vars:
+      LIB_NAME: "gsl"
+      GSL_OUTPUT_DIR: "{{.G_DEPS_DIR}}/{{.LIB_NAME}}-src"
+    run: "once"
+    cmds:
+      - task: ":utils:remote:download-and-extract-tar"
+        vars:
+          FILE_SHA256: "f0e32cb10654fea91ad56bde89170d78cfbf4363ee0b01d8f097de2ba49f6ce9"
+          OUTPUT_DIR: "{{.GSL_OUTPUT_DIR}}"
+          URL: "https://github.com/microsoft/GSL/archive/refs/tags/v4.0.0.tar.gz"
+      - >-
+        echo "set(
+        CLP_FFI_JS_GSL_SOURCE_DIRECTORY \"{{.GSL_OUTPUT_DIR}}\"
+        )" > "{{.G_DEPS_CMAKE_SETTINGS_DIR}}/{{.LIB_NAME}}.cmake"
+
+  download-log-surgeon:
+    internal: true
+    vars:
+      LIB_NAME: "log-surgeon"
+      LOG_SURGEON_OUTPUT_DIR: "{{.G_DEPS_DIR}}/{{.LIB_NAME}}-src"
+    run: "once"
+    cmds:
+      - task: ":utils:remote:download-and-extract-tar"
+        vars:
+          FILE_SHA256: "eebf857962f8fc022bfa5de8d00e10ee4ac36bb8f126a556935a93dde1435aa2"
+          OUTPUT_DIR: "{{.LOG_SURGEON_OUTPUT_DIR}}"
+          URL: "https://github.com/y-scope/log-surgeon/archive/193e1f9.tar.gz"
+      - >-
+        echo "set(
+        CLP_FFI_JS_LOG_SURGEON_SOURCE_DIRECTORY \"{{.LOG_SURGEON_OUTPUT_DIR}}\"
+        )" > "{{.G_DEPS_CMAKE_SETTINGS_DIR}}/{{.LIB_NAME}}.cmake"
+
+  download-msgpack-cxx:
+    internal: true
+    vars:
+      LIB_NAME: "msgpack-cxx"
+      MSGPACK_CXX_OUTPUT_DIR: "{{.G_DEPS_DIR}}/{{.LIB_NAME}}-src"
+    run: "once"
+    cmds:
+      - task: ":utils:remote:download-and-extract-tar"
+        vars:
+          FILE_SHA256: "7504b7af7e7b9002ce529d4f941e1b7fb1fb435768780ce7da4abaac79bb156f"
+          OUTPUT_DIR: "{{.MSGPACK_CXX_OUTPUT_DIR}}"
+          URL: "https://github.com/msgpack/msgpack-c/releases/download/cpp-7.0.0/msgpack-cxx-7.0.0.tar.gz"
+      - >-
+        echo "set(
+        CLP_FFI_JS_MSGPACK_CXX_SOURCE_DIRECTORY \"{{.MSGPACK_CXX_OUTPUT_DIR}}\"
         )" > "{{.G_DEPS_CMAKE_SETTINGS_DIR}}/{{.LIB_NAME}}.cmake"
 
   download-nlohmann-json:

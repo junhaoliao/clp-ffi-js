@@ -6,4 +6,4 @@ tasks:
 
   js:
     deps: [":package", ":deps:node-modules"]
-    cmd: "npm run test"
+    cmd: "npm run test {{.CLI_ARGS}}"
