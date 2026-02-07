@@ -151,17 +151,15 @@ set(CLP_FFI_JS_SUPPORTED_ENVIRONMENTS
 set(CLP_BUILD_CLP_STRING_UTILS ON)
 add_subdirectory(${CLP_FFI_JS_CLP_SOURCE_DIRECTORY}/components/core/src/clp/string_utils)
 
-# Set up `Boost::headers` as a header-only interface target so that downstream dependencies
-# (e.g., ystdlib) can link against it without requiring a full Boost installation.
-if(NOT TARGET Boost::headers)
-    add_library(Boost_headers INTERFACE)
-    target_include_directories(Boost_headers INTERFACE ${CLP_FFI_JS_BOOST_SOURCE_DIRECTORY})
-    add_library(Boost::headers ALIAS Boost_headers)
+# Allow `find_package(Boost)` to locate the Boost installation when cross-compiling with Emscripten,
+# whose toolchain file restricts package searches to `CMAKE_FIND_ROOT_PATH`.
+if(Boost_ROOT)
+    list(APPEND CMAKE_FIND_ROOT_PATH "${Boost_ROOT}")
 endif()
+find_package(Boost REQUIRED COMPONENTS headers regex url)
 
 # Set up ystdlib as a subproject to provide the `ystdlib::error_handling` target required by the CLP
 # core's `EncodedTextAstError` and `clp_s`'s `timestamp_parser`.
-set(Boost_INCLUDE_DIR "${CLP_FFI_JS_BOOST_SOURCE_DIRECTORY}")
 set(YSTDLIB_CPP_BUILD_TESTING OFF)
 add_subdirectory(${CLP_FFI_JS_YSTDLIB_SOURCE_DIRECTORY} ystdlib)
 
@@ -272,23 +270,6 @@ if(NOT TARGET OpenSSL::Crypto)
     add_library(OpenSSL::Crypto ALIAS OpenSSL_Crypto)
 endif()
 
-# Provide an empty Boost::regex target (clp_s::clp_dependencies links it but we don't use regex)
-if(NOT TARGET Boost::regex)
-    add_library(Boost_regex INTERFACE)
-    target_include_directories(Boost_regex INTERFACE ${CLP_FFI_JS_BOOST_SOURCE_DIRECTORY})
-    add_library(Boost::regex ALIAS Boost_regex)
-endif()
-
-# Provide Boost::url target (needed by clp_s Utils.cpp for URI parsing).
-# Boost.URL is not header-only; it requires compiling source files.
-if(NOT TARGET Boost::url)
-    file(GLOB_RECURSE CLP_FFI_JS_BOOST_URL_SOURCES "${CLP_FFI_JS_BOOST_SOURCE_DIRECTORY}/libs/url/src/*.cpp")
-    add_library(Boost_url STATIC ${CLP_FFI_JS_BOOST_URL_SOURCES})
-    target_include_directories(Boost_url PUBLIC ${CLP_FFI_JS_BOOST_SOURCE_DIRECTORY})
-    target_compile_features(Boost_url PRIVATE cxx_std_20)
-    add_library(Boost::url ALIAS Boost_url)
-endif()
-
 # Set the zstd target variable expected by clp_s
 set(zstd_TARGET "")
 
@@ -318,6 +299,9 @@ foreach(env ${CLP_FFI_JS_SUPPORTED_ENVIRONMENTS})
     # Set up link options
     target_link_libraries(${CLP_FFI_JS_BIN_NAME}
         PRIVATE
+        Boost::headers
+        Boost::regex
+        Boost::url
         clp_s::archive_reader
         clp_s::search
         clp_s::search::ast
@@ -350,7 +334,6 @@ Link options: ${CLP_FFI_JS_LINK_OPTIONS}."
         ${CLP_FFI_JS_BIN_NAME}
         SYSTEM
         PRIVATE
-        ${CLP_FFI_JS_BOOST_SOURCE_DIRECTORY}
         ${CLP_FFI_JS_CLP_SOURCE_DIRECTORY}/components/core/src
         ${CLP_FFI_JS_CLP_SOURCE_DIRECTORY}/components/core/src/clp
         ${CLP_FFI_JS_MSGPACK_CXX_SOURCE_DIRECTORY}/include
