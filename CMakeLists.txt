@@ -47,6 +47,9 @@ if(${CLP_FFI_JS_PROJECT_NAME}_IS_TOP_LEVEL)
     include("${CMAKE_CURRENT_SOURCE_DIR}/build/deps/cmake-settings/settings.cmake" OPTIONAL)
 endif()
 
+# CLP is included as a git submodule under src/clp
+set(CLP_FFI_JS_CLP_SOURCE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/src/clp")
+
 # Disable response files since `clang-tidy` doesn't seem to be able to use them
 set(CMAKE_CXX_USE_RESPONSE_FILE_FOR_INCLUDES OFF)
 
@@ -104,6 +107,8 @@ set(CLP_FFI_JS_SRC_MAIN
     src/clp_ffi_js/ir/StructuredIrStreamReader.cpp
     src/clp_ffi_js/ir/StructuredIrUnitHandler.cpp
     src/clp_ffi_js/ir/UnstructuredIrStreamReader.cpp
+    src/clp_ffi_js/sfa/ArchiveDecoder.cpp
+    src/clp_ffi_js/sfa/SfaBindings.cpp
     src/clp_ffi_js/utils.cpp
 )
 
@@ -134,7 +139,7 @@ set(CLP_FFI_JS_SUPPORTED_ENVIRONMENTS
 find_package(antlr4-runtime REQUIRED)
 message(STATUS "Found antlr4-runtime ${antlr4-runtime_VERSION}")
 
-find_package(Boost REQUIRED COMPONENTS headers)
+find_package(Boost REQUIRED COMPONENTS headers url)
 message(STATUS "Found Boost ${Boost_VERSION}")
 
 find_package(date REQUIRED)
@@ -161,24 +166,111 @@ message(STATUS "Found zstd ${zstd_VERSION}")
 set(CLP_BUILD_CLP_STRING_UTILS ON)
 add_subdirectory(${CLP_FFI_JS_CLP_SOURCE_DIRECTORY}/components/core/src/clp/string_utils)
 
-# The `clp_s` component is linked because the IR search feature uses the same KQL syntax as `clp_s`,
-# by reusing `clp_s`'s AST and KQL libraries.
-#
-# However, 'clp-ffi-js' doesn't currently require other 'clp_s' build targets (e.g., executables,
-# archive readers, etc.). Disabling them prevents an increase in the binary size and reduces the
-# number of dependencies needed during the build process.
+# The `clp_s` component provides the KQL AST/parser (used by both IR search and SFA search), the
+# archive reader/search (used by SFA), and the timestamp parser.
 set(CLP_BUILD_EXECUTABLES OFF)
-set(CLP_BUILD_CLP_S_ARCHIVEREADER OFF)
+set(CLP_BUILD_CLP_S_ARCHIVEREADER ON)
 set(CLP_BUILD_CLP_S_ARCHIVEWRITER OFF)
-set(CLP_BUILD_CLP_S_CLP_DEPENDENCIES OFF)
-set(CLP_BUILD_CLP_S_IO OFF)
+set(CLP_BUILD_CLP_S_CLP_DEPENDENCIES ON)
+set(CLP_BUILD_CLP_S_IO ON)
 set(CLP_BUILD_CLP_S_JSONCONSTRUCTOR OFF)
 set(CLP_BUILD_CLP_S_REDUCER_DEPENDENCIES OFF)
-set(CLP_BUILD_CLP_S_SEARCH OFF)
+set(CLP_BUILD_CLP_S_SEARCH ON)
 set(CLP_BUILD_CLP_S_SEARCH_AST ON)
 set(CLP_BUILD_CLP_S_SEARCH_KQL ON)
 set(CLP_BUILD_CLP_S_TIMESTAMP_PARSER ON)
 set(CLP_BUILD_CLP_S_TIMESTAMPPATTERN ON)
+
+# Provide stub targets for libraries that are not available in the Emscripten environment.
+# The clp_s CLP dependencies list curl and OpenSSL, but we only use the filesystem code path.
+if(NOT TARGET OpenSSL::Crypto)
+    add_library(OpenSSL_Crypto INTERFACE)
+    add_library(OpenSSL::Crypto ALIAS OpenSSL_Crypto)
+endif()
+
+# Provide an empty Boost::regex target (clp_s::clp_dependencies links it but we don't use regex)
+if(NOT TARGET Boost::regex)
+    add_library(Boost_regex INTERFACE)
+    add_library(Boost::regex ALIAS Boost_regex)
+endif()
+
+
+# Set the zstd target variable expected by clp_s
+set(zstd_TARGET zstd::libzstd_static)
+
+# Set empty CURL_LIBRARIES since we stub out network functionality
+set(CURL_LIBRARIES "")
+
+# Set up abseil-cpp
+set(ABSL_PROPAGATE_CXX_STD ON)
+set(ABSL_BUILD_TESTING OFF)
+set(BUILD_TESTING OFF)
+add_subdirectory(${CLP_FFI_JS_ABSEIL_CPP_SOURCE_DIRECTORY} abseil-cpp)
+
+# Set up Microsoft GSL (Guidelines Support Library) - required by log-surgeon
+set(GSL_TEST OFF CACHE BOOL "" FORCE)
+add_subdirectory(${CLP_FFI_JS_GSL_SOURCE_DIRECTORY} gsl EXCLUDE_FROM_ALL)
+
+# Set up log-surgeon
+# log-surgeon uses find_package() for fmt, Microsoft.GSL, and ystdlib. Since we build these from
+# source via add_subdirectory, we provide minimal config files so find_package can locate them.
+set(CLP_FFI_JS_CMAKE_SHIMS_DIR "${CMAKE_CURRENT_BINARY_DIR}/cmake-shims")
+file(MAKE_DIRECTORY "${CLP_FFI_JS_CMAKE_SHIMS_DIR}/fmt")
+file(WRITE "${CLP_FFI_JS_CMAKE_SHIMS_DIR}/fmt/fmtConfig.cmake"
+    "# Shim: fmt target already created by find_package\n"
+    "set(fmt_VERSION ${fmt_VERSION})\n"
+    "set(fmt_FOUND TRUE)\n"
+)
+file(WRITE "${CLP_FFI_JS_CMAKE_SHIMS_DIR}/fmt/fmtConfigVersion.cmake"
+    "set(PACKAGE_VERSION \"${fmt_VERSION}\")\n"
+    "set(PACKAGE_VERSION_COMPATIBLE TRUE)\n"
+    "set(PACKAGE_VERSION_EXACT TRUE)\n"
+)
+file(MAKE_DIRECTORY "${CLP_FFI_JS_CMAKE_SHIMS_DIR}/Microsoft.GSL")
+file(WRITE "${CLP_FFI_JS_CMAKE_SHIMS_DIR}/Microsoft.GSL/Microsoft.GSLConfig.cmake"
+    "# Shim: Microsoft.GSL::GSL target already created by add_subdirectory\n"
+    "set(Microsoft.GSL_VERSION 4.0.0)\n"
+    "set(Microsoft.GSL_FOUND TRUE)\n"
+)
+file(WRITE "${CLP_FFI_JS_CMAKE_SHIMS_DIR}/Microsoft.GSL/Microsoft.GSLConfigVersion.cmake"
+    "set(PACKAGE_VERSION \"4.0.0\")\n"
+    "set(PACKAGE_VERSION_COMPATIBLE TRUE)\n"
+    "set(PACKAGE_VERSION_EXACT TRUE)\n"
+)
+file(MAKE_DIRECTORY "${CLP_FFI_JS_CMAKE_SHIMS_DIR}/ystdlib")
+file(WRITE "${CLP_FFI_JS_CMAKE_SHIMS_DIR}/ystdlib/ystdlibConfig.cmake"
+    "# Shim: ystdlib targets already created by find_package\n"
+    "set(ystdlib_VERSION ${ystdlib_VERSION})\n"
+    "set(ystdlib_FOUND TRUE)\n"
+)
+file(WRITE "${CLP_FFI_JS_CMAKE_SHIMS_DIR}/ystdlib/ystdlibConfigVersion.cmake"
+    "set(PACKAGE_VERSION \"${ystdlib_VERSION}\")\n"
+    "set(PACKAGE_VERSION_COMPATIBLE TRUE)\n"
+    "set(PACKAGE_VERSION_EXACT TRUE)\n"
+)
+set(fmt_DIR "${CLP_FFI_JS_CMAKE_SHIMS_DIR}/fmt")
+set(Microsoft.GSL_DIR "${CLP_FFI_JS_CMAKE_SHIMS_DIR}/Microsoft.GSL")
+set(ystdlib_DIR "${CLP_FFI_JS_CMAKE_SHIMS_DIR}/ystdlib")
+
+set(log_surgeon_BUILD_TESTING OFF)
+# Temporarily skip install rules to avoid export validation errors for log-surgeon's dependencies.
+set(CMAKE_SKIP_INSTALL_RULES_SAVED "${CMAKE_SKIP_INSTALL_RULES}")
+set(CMAKE_SKIP_INSTALL_RULES ON)
+add_subdirectory(${CLP_FFI_JS_LOG_SURGEON_SOURCE_DIRECTORY} log-surgeon)
+set(CMAKE_SKIP_INSTALL_RULES "${CMAKE_SKIP_INSTALL_RULES_SAVED}")
+# log-surgeon enables -Werror which triggers issues with ystdlib/emscripten. Disable for our build.
+if(TARGET log_surgeon)
+    target_compile_options(log_surgeon PRIVATE -Wno-error)
+endif()
+
+# Set up msgpack-cxx (header-only with CMake)
+set(MSGPACK_USE_BOOST OFF CACHE BOOL "" FORCE)
+set(MSGPACK_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+set(MSGPACK_CXX20 ON CACHE BOOL "" FORCE)
+set(MSGPACK_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(MSGPACK_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+add_subdirectory(${CLP_FFI_JS_MSGPACK_CXX_SOURCE_DIRECTORY} msgpack-cxx)
+
 add_subdirectory(${CLP_FFI_JS_CLP_SOURCE_DIRECTORY}/components/core/src/clp_s)
 
 foreach(env ${CLP_FFI_JS_SUPPORTED_ENVIRONMENTS})
@@ -194,6 +286,8 @@ foreach(env ${CLP_FFI_JS_SUPPORTED_ENVIRONMENTS})
         PRIVATE
         antlr4_static
         Boost::headers
+        clp_s::archive_reader
+        clp_s::search
         clp_s::search::ast
         clp_s::search::kql
         date::date
@@ -231,6 +325,7 @@ Link options: ${CLP_FFI_JS_LINK_OPTIONS}."
         PRIVATE
         ${CLP_FFI_JS_CLP_SOURCE_DIRECTORY}/components/core/src
         ${CLP_FFI_JS_CLP_SOURCE_DIRECTORY}/components/core/src/clp
+        ${CLP_FFI_JS_MSGPACK_CXX_SOURCE_DIRECTORY}/include
     )
 
     target_include_directories(${CLP_FFI_JS_BIN_NAME} PRIVATE src/)
